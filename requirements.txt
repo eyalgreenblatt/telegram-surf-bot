@@ -1,0 +1,9 @@
+python-telegram-bot==21.0.1
+python-dotenv
+requests
+matplotlib
+pandas
+numpy
+scipy
+openai-whisper
+pydub
