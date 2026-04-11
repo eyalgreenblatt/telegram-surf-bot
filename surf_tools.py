@@ -2,6 +2,13 @@ from datetime import datetime
 import requests
 import os
 
+from rating_system import (
+    calculate_rating,
+    get_rating_label,
+    get_rating_explanation,
+    find_good_wave_windows,
+)
+
 # 🌊 Beach coordinates
 BEACH_COORDS = {
     "tel aviv": (32.0853, 34.7818),
@@ -26,6 +33,15 @@ HEBREW_DAYS = {
 
 
 def get_surf_forecast(beach="tel aviv", days=1, lang="en"):
+    """
+    Fetch a surf forecast from the Stormglass API.
+
+    Returns a tuple of:
+        report  – formatted text summary (str)
+        hours   – list of hourly dicts with keys:
+                    time (datetime), height, period, wind, rating
+        windows – list of good-wave window dicts (may be empty)
+    """
     try:
         lat, lng = BEACH_COORDS.get(beach.lower(), BEACH_COORDS["tel aviv"])
 
@@ -43,11 +59,11 @@ def get_surf_forecast(beach="tel aviv", days=1, lang="en"):
 
         # 🛟 SAFETY: API failed or limit reached
         if "hours" not in data:
-            return "⚠️ Stormglass API limit reached / unavailable", []
+            return "⚠️ Stormglass API limit reached / unavailable", [], []
 
         raw_hours = data["hours"]
 
-        # ⭐ CONVERT to graph-friendly structure
+        # ⭐ CONVERT to graph-friendly structure and attach ratings
         hours = []
         for hour in raw_hours:
             try:
@@ -56,19 +72,24 @@ def get_surf_forecast(beach="tel aviv", days=1, lang="en"):
                 height = hour["waveHeight"]["noaa"]
                 wind = hour["windSpeed"]["noaa"]
                 period = hour["wavePeriod"]["noaa"]
+                rating = calculate_rating(height, period, wind)
 
                 hours.append({
                     "time": dt,
                     "height": height,
                     "period": period,
-                    "wind": wind
+                    "wind": wind,
+                    "rating": rating,
                 })
             except:
                 continue
 
         # If no valid hours → stop
         if not hours:
-            return "⚠️ No surf data available", []
+            return "⚠️ No surf data available", [], []
+
+        # Detect good-wave windows (rating >= 7, at least 2 consecutive hours)
+        windows = find_good_wave_windows(hours, min_rating=7.0, min_consecutive=2)
 
         # 📄 TEXT REPORT
         start_date = hours[0]["time"]
@@ -84,18 +105,19 @@ def get_surf_forecast(beach="tel aviv", days=1, lang="en"):
         # Show every 6 hours (nice Telegram summary)
         for h in hours[::6]:
             day = HEBREW_DAYS[h["time"].strftime("%A")] if lang == "he" else h["time"].strftime("%A")
+            label = get_rating_label(h["rating"])
 
             if lang == "he":
                 report += f"{day} {h['time']:%d/%m %H:%M}\n"
                 report += f"🌊 גל: {h['height']:.1f}מ | ⏱️ פרק גל: {h['period']:.1f}ש\n"
-                report += f"💨 רוח: {h['wind']:.1f} מ/ש\n\n"
+                report += f"💨 רוח: {h['wind']:.1f} מ/ש | ⭐ דירוג: {h['rating']}/10 {label}\n\n"
             else:
                 report += f"{day} {h['time']:%d %b %H:%M}\n"
                 report += f"🌊 Wave: {h['height']:.1f}m | Period: {h['period']:.1f}s\n"
-                report += f"💨 Wind: {h['wind']:.1f} m/s\n\n"
+                report += f"💨 Wind: {h['wind']:.1f} m/s | ⭐ Rating: {h['rating']}/10 {label}\n\n"
 
-        return report, hours
+        return report, hours, windows
 
     except Exception as e:
         print("Stormglass error:", e)
-        return "⚠️ Surf API error", []
+        return "⚠️ Surf API error", [], []
