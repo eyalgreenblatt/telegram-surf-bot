@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 from surf_tools import get_surf_forecast
 from surf_graph import create_wave_graph
 from voice_tools import transcribe_voice
+from voice_parser import parse_voice_command
 from rating_system import format_good_windows_message
 
 load_dotenv()
@@ -54,8 +55,19 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     file = await context.bot.get_file(update.message.voice.file_id)
     await file.download_to_drive("voice.ogg")
 
-    transcribe_voice("voice.ogg")
-    await _send_forecast(update, "habonim", 7, "he")
+    transcribed_text = transcribe_voice("voice.ogg")
+    beach, days, lang = parse_voice_command(transcribed_text, lang="he")
+
+    duration_label = (
+        "today" if days == 1
+        else "tomorrow" if days == 2
+        else f"{days} days"
+    )
+    await update.message.reply_text(
+        f"🏄 Fetching forecast for {beach.title()}, {duration_label}..."
+    )
+
+    await _send_forecast(update, beach, days, lang)
 
 
 def main():
