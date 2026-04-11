@@ -121,7 +121,7 @@ def create_wave_graph(hours: List[Dict[str, Any]], beach: str) -> str:
     df_full, df = _build_dataframe(hours)
 
     x      = np.arange(len(df))
-    labels = [t.strftime("%d/%m\n%Hh") for t in df["time"]]
+    labels = [t.strftime("%-d.%m %-I%p").lower() for t in df["time"]]
 
     # Detect good windows from the full-resolution data
     windows = find_good_wave_windows(df_full.to_dict("records"), min_rating=7.0)
